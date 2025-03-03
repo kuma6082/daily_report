@@ -11,6 +11,8 @@ on:
 jobs:
   merge:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 環境変数でトークン設定
 
     steps:
       - name: リポジトリをチェックアウト（全ファイル取得）
@@ -18,11 +20,6 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          # リポジトリ全体を取得するため、sparse-checkout の設定は不要です。
-          # ※ もし特定のディレクトリだけを取得したい場合は、下記のように設定してください：
-          # sparse-checkout: |
-          #   2025/
-          # sparse-checkout-cone-mode: false
 
       - name: 実行対象の年月を決定
         run: |
@@ -33,52 +30,53 @@ jobs:
             YEAR=$(date --date="last month" +'%Y')
             MONTH=$(date --date="last month" +'%m')
           fi
+
           echo "YEAR=$YEAR" >> $GITHUB_ENV
           echo "MONTH=$MONTH" >> $GITHUB_ENV
 
-      - name: デバッグ用にディレクトリの中身を確認
+      - name: 最新のコミットメッセージを取得
         run: |
-          echo "Repository root structure:"
-          ls -la
-          echo "Checking target directory $YEAR/$MONTH ..."
-          ls -la "$YEAR/$MONTH" || echo "Directory $YEAR/$MONTH not found"
+          LAST_COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "LAST_COMMIT_MSG=$LAST_COMMIT_MSG" >> $GITHUB_ENV
 
-      - name: Markdownファイルを結合
+      - name: Markdownファイルを結合（Last commit message 追加）
         run: |
           REPORT_DIR="$YEAR/$MONTH"
           OUTPUT_FILE="${YEAR}-${MONTH}-merged.md"
+
           echo "Looking for files in: $REPORT_DIR"
-          
+
           if [ ! -d "$REPORT_DIR" ]; then
             echo "Directory $REPORT_DIR does not exist. Skipping merge."
             exit 0
           fi
-          
+
+          # 最新のコミットメッセージをファイルの先頭に追加
+          echo -e "# Last Commit Message:\n${LAST_COMMIT_MSG}\n\n" > "$OUTPUT_FILE"
+
+          # Markdownファイルを結合
           if ls "$REPORT_DIR"/*.md 1> /dev/null 2>&1; then
-            cat $(ls "$REPORT_DIR"/*.md | sort) > "$OUTPUT_FILE"
+            cat $(ls "$REPORT_DIR"/*.md | sort) >> "$OUTPUT_FILE"
           else
             echo "No Markdown files found in $REPORT_DIR. Skipping merge."
             exit 0
           fi
 
       - name: 変更をコミット & プッシュ
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
           MERGED_FILE="${YEAR}-${MONTH}-merged.md"
-          
+
           if [ -f "$MERGED_FILE" ]; then
             git add "$MERGED_FILE"
             git commit -m "${YEAR}年${MONTH}月の日報を結合"
 
-            # GITHUB_TOKEN を使って認証 & push
+            # `GITHUB_TOKEN` を使って認証して push
             git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
             git push origin main
           else
             echo "Merged file $MERGED_FILE does not exist. Skipping commit & push."
             exit 0
           fi
-
