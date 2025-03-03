@@ -47,6 +47,15 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add daily_report/${YEAR}-${MONTH}-merged.md
-          git commit -m "${YEAR}年${MONTH}月の日報を結合"
-          git push
+
+          MERGED_FILE="daily_report/${YEAR}-${MONTH}-merged.md"
+
+          # ファイルが存在する場合のみコミット & プッシュ
+          if [ -f "$MERGED_FILE" ]; then
+            git add "$MERGED_FILE"
+            git commit -m "${YEAR}年${MONTH}月の日報を結合"
+            git push
+          else
+            echo "Merged file $MERGED_FILE does not exist. Skipping commit & push."
+            exit 0  # 正常終了
+          fi
