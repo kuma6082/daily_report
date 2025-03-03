@@ -33,7 +33,7 @@ jobs:
 
       - name: Markdownファイルを結合
         run: |
-          REPORT_DIR="daily_report/$YEAR/$MONTH"
+          REPORT_DIR="daily_report/$YEAR/$MONTH/"
           OUTPUT_FILE="daily_report/${YEAR}-${MONTH}-merged.md"
           
           if [ -d "$REPORT_DIR" ]; then
