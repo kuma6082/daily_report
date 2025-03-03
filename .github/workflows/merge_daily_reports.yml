@@ -62,15 +62,23 @@ jobs:
           fi
 
       - name: 変更をコミット & プッシュ
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
           MERGED_FILE="${YEAR}-${MONTH}-merged.md"
+          
           if [ -f "$MERGED_FILE" ]; then
             git add "$MERGED_FILE"
             git commit -m "${YEAR}年${MONTH}月の日報を結合"
-            git push
+
+            # GITHUB_TOKEN を使って認証 & push
+            git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+            git push origin main
           else
             echo "Merged file $MERGED_FILE does not exist. Skipping commit & push."
             exit 0
           fi
+
