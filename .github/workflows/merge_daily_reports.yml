@@ -15,8 +15,11 @@ jobs:
     steps:
       - name: リポジトリをチェックアウト
         uses: actions/checkout@v4
+        with:
+          ref: main  # 明示的に main ブランチを取得
+          fetch-depth: 0  # フル履歴を取得
 
-      - name: 対象の年月を決定
+      - name: 実行対象の年月を決定
         run: |
           if [ "${{ github.event.inputs.target_month }}" == "now" ]; then
             YEAR=$(date +'%Y')
@@ -26,20 +29,29 @@ jobs:
             MONTH=$(date --date="last month" +'%m')
           fi
 
-          # 確認用ログ
-          echo "Selected Target: $YEAR-$MONTH"
+          # 環境変数として保存
           echo "YEAR=$YEAR" >> $GITHUB_ENV
           echo "MONTH=$MONTH" >> $GITHUB_ENV
 
       - name: Markdownファイルを結合
         run: |
-          REPORT_DIR="daily_report/$YEAR/$MONTH/"
+          REPORT_DIR="daily_report/$YEAR/$MONTH"
           OUTPUT_FILE="daily_report/${YEAR}-${MONTH}-merged.md"
+
+          # 確認用ログ
+          echo "Looking for files in: $REPORT_DIR"
           
-          if [ -d "$REPORT_DIR" ]; then
+          # ディレクトリが存在しない場合の処理
+          if [ ! -d "$REPORT_DIR" ]; then
+            echo "Directory $REPORT_DIR does not exist in the checked-out repo. Skipping merge."
+            exit 0
+          fi
+
+          # ファイルが存在する場合のみ結合
+          if ls $REPORT_DIR/*.md 1> /dev/null 2>&1; then
             cat $(ls $REPORT_DIR/*.md | sort) > $OUTPUT_FILE
           else
-            echo "Directory $REPORT_DIR does not exist. Skipping merge."
+            echo "No Markdown files found in $REPORT_DIR. Skipping merge."
             exit 0
           fi
 
