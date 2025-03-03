@@ -18,6 +18,7 @@ jobs:
         with:
           ref: main  # 明示的に main ブランチを取得
           fetch-depth: 0  # フル履歴を取得
+          sparse-checkout: false
 
       - name: 実行対象の年月を決定
         run: |
