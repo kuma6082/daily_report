@@ -37,7 +37,8 @@ jobs:
       - name: Markdownファイルを結合（各ファイルの LAST_COMMIT_MSG を追加）
         run: |
           REPORT_DIR="$YEAR/$MONTH"
-          OUTPUT_FILE="${YEAR}-${MONTH}-merged.md"
+          MERGED_DIR="merged"
+          OUTPUT_FILE="${MERGED_DIR}/${YEAR}-${MONTH}-merged.md"
 
           echo "Looking for files in: $REPORT_DIR"
 
@@ -45,6 +46,9 @@ jobs:
             echo "Directory $REPORT_DIR does not exist. Skipping merge."
             exit 0
           fi
+
+          # 保存先ディレクトリが存在しない場合は作成
+          mkdir -p "$MERGED_DIR"
 
           # 先頭にタイトルを追加
           echo -e "# Merged Daily Reports for $YEAR-$MONTH\n\n" > "$OUTPUT_FILE"
@@ -68,7 +72,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          MERGED_FILE="merged/${YEAR}-${MONTH}-merged.md"
+          MERGED_DIR="merged"
+          MERGED_FILE="${MERGED_DIR}/${YEAR}-${MONTH}-merged.md"
 
           if [ -f "$MERGED_FILE" ]; then
             git add "$MERGED_FILE"
@@ -81,3 +86,4 @@ jobs:
             echo "Merged file $MERGED_FILE does not exist. Skipping commit & push."
             exit 0
           fi
+
