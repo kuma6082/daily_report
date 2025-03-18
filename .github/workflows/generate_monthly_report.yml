@@ -28,11 +28,11 @@ jobs:
         run: |
           set -e
           if [ "${{ github.event.inputs.target_month }}" == "now" ]; then
-            YEAR=$(date +'%Y') || { echo "ERROR: Failed to get current year"; exit 1; }
-            MONTH=$(date +'%m') || { echo "ERROR: Failed to get current month"; exit 1; }
+            YEAR=$(date +'%Y')
+            MONTH=$(date +'%m')
           else
-            YEAR=$(date --date="last month" +'%Y') || { echo "ERROR: Failed to get last year"; exit 1; }
-            MONTH=$(date --date="last month" +'%m') || { echo "ERROR: Failed to get last month"; exit 1; }
+            YEAR=$(date --date="last month" +'%Y')
+            MONTH=$(date --date="last month" +'%m')
           fi
 
           echo "YEAR=$YEAR" >> $GITHUB_ENV
@@ -42,13 +42,11 @@ jobs:
       - name: Gemini API を使って月報を生成
         run: |
           set -e
-          YEAR=$(date --date="last month" +'%Y')
-          MONTH=$(date --date="last month" +'%m')
-          MERGED_FILE="${YEAR}-${MONTH}-merged.md"
+          MERGED_FILE="$YEAR/$MONTH/${YEAR}-${MONTH}-merged.md"
           TEMPLATE_FILE="monthly_report_template.md"
 
           if [ ! -f "$MERGED_FILE" ]; then
-            echo "ERROR: $MERGED_FILE does not exist. Skipping report generation."
+            echo "ERROR: Merged file $MERGED_FILE does not exist. Skipping report generation."
             exit 0
           fi
 
@@ -66,7 +64,7 @@ jobs:
           SUMMARY=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
             -d '{
-              "contents": [{
+              "contents": [ {
                 "parts": [{ "text": "'"$PROMPT"'" }]
               }]
             }' | jq -r '.candidates[0].content.parts[0].text')
@@ -79,7 +77,6 @@ jobs:
           echo "$SUMMARY" > report_summary.txt
 
       - name: GitHub に保存
-        if: github.event.inputs.save_location == 'github'
         run: |
           set -e
           REPORT_FILE="${YEAR}-${MONTH}-report.md"
