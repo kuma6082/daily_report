@@ -45,7 +45,7 @@ jobs:
         run: |
           set -e
           mkdir -p report
-          MERGED_FILE="merge/${YEAR}-${MONTH}-merged.md"
+          MERGED_FILE="merged/${YEAR}-${MONTH}-merged.md"
           TEMPLATE_FILE="monthly_report_template.md"
 
           if [ ! -f "$MERGED_FILE" ]; then
