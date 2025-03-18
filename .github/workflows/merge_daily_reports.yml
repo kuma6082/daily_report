@@ -68,7 +68,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          MERGED_FILE="${YEAR}-${MONTH}-merged.md"
+          MERGED_FILE="merged/${YEAR}-${MONTH}-merged.md"
 
           if [ -f "$MERGED_FILE" ]; then
             git add "$MERGED_FILE"
