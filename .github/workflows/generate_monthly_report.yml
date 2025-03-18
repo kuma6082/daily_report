@@ -1,0 +1,147 @@
+name: Generate Monthly Report
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_month:
+        description: '対象の月 (now: 今月, last: 先月)'
+        required: true
+        default: 'last'
+      save_location:
+        description: '保存先 (github or notion)'
+        required: true
+        default: 'github'
+        type: choice
+        options:
+          - github
+          - notion
+
+jobs:
+  generate_report:
+    runs-on: ubuntu-latest
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: 実行対象の年月を決定
+        run: |
+          set -e
+          if [ "${{ github.event.inputs.target_month }}" == "now" ]; then
+            YEAR=$(date +'%Y') || { echo "ERROR: Failed to get current year"; exit 1; }
+            MONTH=$(date +'%m') || { echo "ERROR: Failed to get current month"; exit 1; }
+          else
+            YEAR=$(date --date="last month" +'%Y') || { echo "ERROR: Failed to get last year"; exit 1; }
+            MONTH=$(date --date="last month" +'%m') || { echo "ERROR: Failed to get last month"; exit 1; }
+          fi
+
+          echo "YEAR=$YEAR" >> $GITHUB_ENV
+          echo "MONTH=$MONTH" >> $GITHUB_ENV
+          echo "Target year: $YEAR, month: $MONTH"
+
+      - name: Gemini API を使って月報を生成
+        run: |
+          set -e
+          MERGED_FILE="${YEAR}-${MONTH}-merged.md"
+          TEMPLATE_FILE="monthly_report_template.md"
+
+          if [ ! -f "$MERGED_FILE" ]; then
+            echo "ERROR: $MERGED_FILE does not exist. Skipping report generation."
+            exit 0
+          fi
+
+          if [ ! -f "$TEMPLATE_FILE" ]; then
+            echo "ERROR: Template file $TEMPLATE_FILE does not exist. Using default format."
+            TEMPLATE_CONTENT="## ${YEAR}年${MONTH}月の月報\n\n### 今月の振り返り\n\n### 達成したこと\n\n### 課題と改善点\n\n### 来月の目標"
+          else
+            TEMPLATE_CONTENT=$(cat "$TEMPLATE_FILE")
+          fi
+
+          # Gemini API 用のプロンプト作成
+          PROMPT="以下のフォーマットに沿って、Markdown ファイルの内容を要約して月報を作成してください。\n\n---\nテンプレート:\n${TEMPLATE_CONTENT}\n---\n\n対象の内容:\n$(cat "$MERGED_FILE")"
+
+          # Gemini API で月報を生成
+          SUMMARY=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateText?key=${GEMINI_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "prompt": "'"$PROMPT"'"
+            }' | jq -r '.candidates[0].output')
+
+          if [ -z "$SUMMARY" ]; then
+            echo "ERROR: Failed to generate summary from Gemini API."
+            exit 1
+          fi
+
+          echo "$SUMMARY" > report_summary.txt
+
+      - name: GitHub に保存
+        if: github.event.inputs.save_location == 'github'
+        run: |
+          set -e
+          REPORT_FILE="${YEAR}-${MONTH}-report.md"
+          echo -e "# ${YEAR}年${MONTH}月の月報\n\n$(cat report_summary.txt)" > "$REPORT_FILE"
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add "$REPORT_FILE"
+          git commit -m "${YEAR}年${MONTH}月の月報を追加"
+          git push origin main
+
+      - name: Notion に月報を保存
+        if: github.event.inputs.save_location == 'notion'
+        run: |
+          set -e
+          TODAY=$(date +'%Y-%m-%d')  # 現在の日付
+          SLUG="monthly-report-202502"
+          SUMMARY=$(cat report_summary.txt)
+
+          # Excerpt を 100 文字程度に要約
+          EXCERPT=$(echo "$SUMMARY" | tr -d '\n' | awk '{print substr($0, 1, 100)}' | sed 's/[^。]*$/…/' )
+
+          # Notion API で新しいページを作成
+          curl -X POST "https://api.notion.com/v1/pages" \
+            -H "Authorization: Bearer $NOTION_API_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Notion-Version: 2022-06-28" \
+            -d '{
+              "parent": { "database_id": "'"$NOTION_DATABASE_ID"'" },
+              "properties": {
+                "title": {
+                  "title": [{ "text": { "content": "'"${YEAR}年${MONTH}月の月報"'" } }]
+                },
+                "Tags": {
+                  "multi_select": [{ "name": "月報" }, { "name": "HappinessChain" }]
+                },
+                "Date": {
+                  "date": { "start": "'"$TODAY"'" }
+                },
+                "UpdatedDate": null,
+                "Excerpt": {
+                  "rich_text": [{ "text": { "content": "'"$EXCERPT"'" } }]
+                },
+                "Published": {
+                  "checkbox": true
+                },
+                "Slug": {
+                  "rich_text": [{ "text": { "content": "'"$SLUG"'" } }]
+                }
+              },
+              "children": [
+                {
+                  "object": "block",
+                  "type": "paragraph",
+                  "paragraph": { "text": [{ "type": "text", "text": { "content": "'"$SUMMARY"'" } }] }
+                }
+              ]
+            }'
+
+          echo "Notion page created successfully!"
