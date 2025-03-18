@@ -113,7 +113,7 @@ jobs:
           EXCERPT_RAW=$(echo "$SUMMARY_RAW" | awk '{print substr($0, 1, 100)}' | sed 's/[^。]*$/…/')
           EXCERPT_JSON=$(jq -Rs '.' <<< "$EXCERPT_RAW")  # JSON エスケープ
 
-          # Notion 用の Markdown 変換
+          # Notion 用の Markdown 変換（カンマ処理修正）
           SUMMARY_BLOCKS=$(echo "$SUMMARY_RAW" | awk '
           BEGIN { print "[" }
           {
@@ -131,12 +131,12 @@ jobs:
             else if ($0 ~ /^- (.*)/) {
               print "{ \"object\": \"block\", \"type\": \"bulleted_list_item\", \"bulleted_list_item\": { \"rich_text\": [{ \"type\": \"text\", \"text\": { \"content\": \"" substr($0, 3) "\" } }] } },"
             }
-            # 普通の段落（空のリッチテキストを許可）
+            # 普通の段落
             else {
               print "{ \"object\": \"block\", \"type\": \"paragraph\", \"paragraph\": { \"rich_text\": [{ \"type\": \"text\", \"text\": { \"content\": \"" $0 "\" } }] } },"
             }
           }
-          END { print "{}]" }' | sed '$d' | jq -c '.' )
+          END { print "]" }' | sed '$s/,$//' | jq -c '.' )
 
           # Notion API で新しいページを作成
           curl -X POST "https://api.notion.com/v1/pages" \
@@ -170,4 +170,3 @@ jobs:
               },
               "children": '"$SUMMARY_BLOCKS"'
             }' | jq .
-
