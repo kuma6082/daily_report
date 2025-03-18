@@ -44,8 +44,9 @@ jobs:
       - name: Gemini API を使って月報を生成
         run: |
           set -e
+          mkdir -p report
           MERGED_FILE="merge/${YEAR}-${MONTH}-merged.md"
-          TEMPLATE_FILE="report/monthly_report_template.md"
+          TEMPLATE_FILE="monthly_report_template.md"
 
           if [ ! -f "$MERGED_FILE" ]; then
             echo "ERROR: $MERGED_FILE does not exist. Skipping report generation."
