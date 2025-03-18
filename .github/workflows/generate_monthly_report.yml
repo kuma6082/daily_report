@@ -106,8 +106,37 @@ jobs:
           set -e
           TODAY=$(date +'%Y-%m-%d')  # 現在の日付
           SLUG="monthly-report-202502"
-          SUMMARY=$(cat report_summary.txt | jq -Rs .)  # JSON エスケープ
-          EXCERPT=$(echo "$SUMMARY" | tr -d '\n' | awk '{print substr($0, 1, 100)}' | sed 's/[^。]*$/…/' | jq -Rs .)
+          
+          SUMMARY_RAW=$(cat report_summary.txt)
+          SUMMARY_JSON=$(jq -Rs '.' <<< "$SUMMARY_RAW")  # JSON エスケープ
+          
+          EXCERPT_RAW=$(echo "$SUMMARY_RAW" | awk '{print substr($0, 1, 100)}' | sed 's/[^。]*$/…/')
+          EXCERPT_JSON=$(jq -Rs '.' <<< "$EXCERPT_RAW")  # JSON エスケープ
+
+          # Notion 用の Markdown 変換
+          SUMMARY_BLOCKS=$(echo "$SUMMARY_RAW" | awk '
+          BEGIN { print "[" }
+          {
+            # 見出しの場合
+            if ($0 ~ /^# (.*)/) {
+              print "{ \"object\": \"block\", \"type\": \"heading_1\", \"heading_1\": { \"rich_text\": [{ \"type\": \"text\", \"text\": { \"content\": \"" substr($0, 3) "\" } }] } },"
+            }
+            else if ($0 ~ /^## (.*)/) {
+              print "{ \"object\": \"block\", \"type\": \"heading_2\", \"heading_2\": { \"rich_text\": [{ \"type\": \"text\", \"text\": { \"content\": \"" substr($0, 4) "\" } }] } },"
+            }
+            else if ($0 ~ /^### (.*)/) {
+              print "{ \"object\": \"block\", \"type\": \"heading_3\", \"heading_3\": { \"rich_text\": [{ \"type\": \"text\", \"text\": { \"content\": \"" substr($0, 5) "\" } }] } },"
+            }
+            # 箇条書きリスト
+            else if ($0 ~ /^- (.*)/) {
+              print "{ \"object\": \"block\", \"type\": \"bulleted_list_item\", \"bulleted_list_item\": { \"rich_text\": [{ \"type\": \"text\", \"text\": { \"content\": \"" substr($0, 3) "\" } }] } },"
+            }
+            # 普通の段落（空のリッチテキストを許可）
+            else {
+              print "{ \"object\": \"block\", \"type\": \"paragraph\", \"paragraph\": { \"rich_text\": [{ \"type\": \"text\", \"text\": { \"content\": \"" $0 "\" } }] } },"
+            }
+          }
+          END { print "{}]" }' | sed '$d' | jq -c '.' )
 
           # Notion API で新しいページを作成
           curl -X POST "https://api.notion.com/v1/pages" \
@@ -130,7 +159,7 @@ jobs:
                   "date": null
                 },
                 "Excerpt": {
-                  "rich_text": [{ "text": { "content": '"$EXCERPT"' } }]
+                  "rich_text": [{ "text": { "content": '"$EXCERPT_JSON"' } }]
                 },
                 "Published": {
                   "checkbox": true
@@ -139,13 +168,6 @@ jobs:
                   "rich_text": [{ "text": { "content": "'"$SLUG"'" } }]
                 }
               },
-              "children": [
-                {
-                  "object": "block",
-                  "type": "paragraph",
-                  "paragraph": { "text": [{ "type": "text", "text": { "content": '"$SUMMARY"' } }] }
-                }
-              ]
-            }'
+              "children": '"$SUMMARY_BLOCKS"'
+            }' | jq .
 
-          echo "Notion page created successfully!"
