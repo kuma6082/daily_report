@@ -77,7 +77,7 @@ jobs:
             exit 1
           fi
 
-          echo "$SUMMARY" > report_summary.txt
+          echo "$SUMMARY" > report/report_summary.txt
 
       - name: GitHub に保存
         run: |
