@@ -143,7 +143,9 @@ jobs:
                 {
                   "object": "block",
                   "type": "paragraph",
-                  "paragraph": { "text": [{ "type": "text", "text": { "content": '"$SUMMARY"' } }] }
+                  "paragraph": {
+                    "rich_text": [{ "type": "text", "text": { "content": '"$SUMMARY"' } }]
+                  }
                 }
               ]
             }'
