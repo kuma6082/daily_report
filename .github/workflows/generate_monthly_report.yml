@@ -83,7 +83,7 @@ jobs:
         run: |
           set -e
           REPORT_FILE="report/${YEAR}-${MONTH}-report.md"
-          echo -e "# ${YEAR}年${MONTH}月の月報\n\n$(cat report_summary.txt)" > "$REPORT_FILE"
+          echo -e "# ${YEAR}年${MONTH}月の月報\n\n$(cat report/report_summary.txt)" > "$REPORT_FILE"
 
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
