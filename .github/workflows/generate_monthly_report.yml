@@ -30,11 +30,11 @@ jobs:
         run: |
           set -e
           if [ "${{ github.event.inputs.target_month }}" == "now" ]; then
-            YEAR=$(date +'%Y')
-            MONTH=$(date +'%m')
+            YEAR=$(date +'%Y') || { echo "ERROR: Failed to get current year"; exit 1; }
+            MONTH=$(date +'%m') || { echo "ERROR: Failed to get current month"; exit 1; }
           else
-            YEAR=$(date --date="last month" +'%Y')
-            MONTH=$(date --date="last month" +'%m')
+            YEAR=$(date --date="last month" +'%Y') || { echo "ERROR: Failed to get last year"; exit 1; }
+            MONTH=$(date --date="last month" +'%m') || { echo "ERROR: Failed to get last month"; exit 1; }
           fi
 
           echo "YEAR=$YEAR" >> $GITHUB_ENV
@@ -44,9 +44,8 @@ jobs:
       - name: Gemini API を使って月報を生成
         run: |
           set -e
-          mkdir -p report  # reportフォルダがない場合は作成
-          MERGED_FILE="report/${YEAR}-${MONTH}-merged.md"
-          TEMPLATE_FILE="monthly_report_template.md"
+          MERGED_FILE="merge/${YEAR}-${MONTH}-merged.md"
+          TEMPLATE_FILE="report/monthly_report_template.md"
 
           if [ ! -f "$MERGED_FILE" ]; then
             echo "ERROR: $MERGED_FILE does not exist. Skipping report generation."
@@ -60,8 +59,10 @@ jobs:
             TEMPLATE_CONTENT=$(cat "$TEMPLATE_FILE")
           fi
 
+          # Gemini API 用のプロンプト作成
           PROMPT="以下のフォーマットに沿って、Markdown ファイルの内容を要約して月報を作成してください。\n\n---\nテンプレート:\n${TEMPLATE_CONTENT}\n---\n\n対象の内容:\n$(cat "$MERGED_FILE")"
 
+          # Gemini API で月報を生成
           SUMMARY=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
             -d '{
@@ -75,13 +76,13 @@ jobs:
             exit 1
           fi
 
-          echo "$SUMMARY" > report/report_summary.txt
+          echo "$SUMMARY" > report_summary.txt
 
       - name: GitHub に保存
         run: |
           set -e
           REPORT_FILE="report/${YEAR}-${MONTH}-report.md"
-          echo -e "# ${YEAR}年${MONTH}月の月報\n\n$(cat report/report_summary.txt)" > "$REPORT_FILE"
+          echo -e "# ${YEAR}年${MONTH}月の月報\n\n$(cat report_summary.txt)" > "$REPORT_FILE"
 
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
