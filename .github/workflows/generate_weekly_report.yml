@@ -9,7 +9,7 @@ on:
       week_start:
         description: '週の開始曜日を選択してください (例: monday, tuesday, …)'
         required: true
-        default: 'saturday'
+        default: 'monday'
       target:
         description: 'どの週を生成するか (last_week / this_week)'
         required: true
@@ -90,31 +90,24 @@ jobs:
           echo "Merged $COUNT daily report(s) into $MERGED_FILE"
           echo "MERGED_FILE=$MERGED_FILE" >> $GITHUB_OUTPUT
 
-      # 5. プロンプトファイルを作成 (weekly_report_template.md → merged/prompt_weekly_*.md)
-      - name: Create prompt file
-        id: prompt
+      # 5. プロンプト文字列を生成 (テンプレート＋マージ済み日報を組み合わせ)
+      - name: Build prompt for Gemini
+        id: build_prompt
         run: |
           START="${{ steps.date_calc.outputs.START_DATE }}"
           END="${{ steps.date_calc.outputs.END_DATE }}"
           MERGED_FILE="${{ steps.merge.outputs.MERGED_FILE }}"
 
-          SFMT_START=$(echo "$START" | sed 's/\//-/g')
-          SFMT_END=$(echo "$END" | sed 's/\//-/g')
+          # テンプレートとマージ済み日報をそれぞれ取得
+          TEMPLATE_CONTENT=$(<weekly_report_template.md)
+          MERGED_CONTENT=$(<"$MERGED_FILE")
 
-          TEMPLATE="weekly_report_template.md"
-          PROMPT_FILE="merged/prompt_weekly_${SFMT_START}_to_${SFMT_END}.md"
+          # 月報ワークフローと同様のフォーマットでプロンプトを組み立てる
+          PROMPT="以下のフォーマットに沿って、Markdown ファイルの内容を要約して週報を作成してください\n\n---\n\nテンプレート:\n${TEMPLATE_CONTENT}\n\n---\n\n対象の内容:\n${MERGED_CONTENT}"
 
-          sed \
-            -e "s/{{WEEK_START}}/${START//\//\\/}/g" \
-            -e "s/{{WEEK_END}}/${END//\//\\/}/g" \
-            "$TEMPLATE" > "${PROMPT_FILE}.tmp"
-
-          awk -v merged="$(sed 's/\\/\\\\/g; s/&/\\&/g; s/$/\\/' "$MERGED_FILE")" \
-            '{ if ($0 ~ /{{MERGED_CONTENT}}/) { print merged } else { print } }' \
-            "${PROMPT_FILE}.tmp" > "$PROMPT_FILE"
-
-          rm "${PROMPT_FILE}.tmp"
-          echo "PROMPT_FILE=$PROMPT_FILE" >> $GITHUB_OUTPUT
+          # 改行を \n にエスケープして $GITHUB_OUTPUT に保存
+          ESCAPED_PROMPT=$(printf '%s' "$PROMPT" | sed ':a;N;$!ba;s/\n/\\n/g')
+          echo "PROMPT=$ESCAPED_PROMPT" >> $GITHUB_OUTPUT
 
       # 6. Gemini API を呼び出して週報を生成 (月報ワークフローと同じ方式)
       - name: Call Gemini API for weekly report
@@ -122,16 +115,16 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          PROMPT_FILE="${{ steps.prompt.outputs.PROMPT_FILE }}"
+          # GitHub Actions の出力からエスケープされたプロンプトを取得
+          ESCAPED_PROMPT="${{ steps.build_prompt.outputs.PROMPT }}"
 
-          PROMPT=$(sed ':a;N;$!ba;s/\n/\\n/g' "$PROMPT_FILE")
-
+          # もう一度改行コードを戻す必要はなく、JSON の一行文字列として埋め込む
           RESPONSE=$(curl --fail -s -X POST \
             "https://generativelanguage.googleapis.com/v1beta2/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
             -d '{
               "contents": [{
-                "parts": [{ "text": "'"${PROMPT}"'" }]
+                "parts": [{ "text": "'"$ESCAPED_PROMPT"'" }]
               }]
             }' \
             | jq -r '.candidates[0].content.parts[0].text')
@@ -141,6 +134,7 @@ jobs:
             exit 1
           fi
 
+          # 生成結果を $GITHUB_OUTPUT に保存
           echo "GENERATED_CONTENT<<EOF" >> $GITHUB_OUTPUT
           echo "$RESPONSE" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
