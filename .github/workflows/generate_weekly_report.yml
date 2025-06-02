@@ -161,7 +161,12 @@ jobs:
           SFMT_END=$(echo "${{ steps.date_calc.outputs.END_DATE }}" | sed 's/\//-/g')
 
           WEEKLY_FILE="weekly_report/${SFMT_START}to${SFMT_END}.md"
-          echo "${{ steps.ai.outputs.GENERATED_CONTENT }}" > "$WEEKLY_FILE"
+
+          # 以下の Heredoc を使って確実にファイルに書き込む
+          cat << 'EOF' > "$WEEKLY_FILE"
+${{ steps.ai.outputs.GENERATED_CONTENT }}
+EOF
+
           echo "WEEKLY_FILE=$WEEKLY_FILE" >> $GITHUB_OUTPUT
 
       # 8. git コミット & プッシュ
