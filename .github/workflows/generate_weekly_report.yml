@@ -96,18 +96,16 @@ jobs:
           END="${{ steps.date_calc.outputs.END_DATE }}"
           MERGED_FILE="${{ steps.merge.outputs.MERGED_FILE }}"
 
-          # テンプレートとマージ済み日報をそれぞれ取得
-          TEMPLATE_CONTENT=$(<weekly_report_template.md)
+          # ← テンプレートを .txt で読み込むように変更
+          TEMPLATE_CONTENT=$(<weekly_report_template.txt)
           MERGED_CONTENT=$(<"$MERGED_FILE")
 
-          # 月報ワークフローと同様のフォーマットでプロンプトを組み立てる
-          PROMPT="以下のフォーマットに沿って、Markdown ファイルの内容を要約して週報を作成してください\n\n---\n\nテンプレート:\n${TEMPLATE_CONTENT}\n\n---\n\n対象の内容:\n${MERGED_CONTENT}"
+          PROMPT="以下のフォーマットに沿って、テキストファイルの内容を要約して週報を作成してください\n\nテンプレート:\n${TEMPLATE_CONTENT}\n\n対象の内容:\n${MERGED_CONTENT}"
 
-          # 一時ファイルに書き出し
           printf '%s' "$PROMPT" > merged/tmp_prompt.txt
           echo "PROMPT_FILE=merged/tmp_prompt.txt" >> $GITHUB_OUTPUT
 
-      # 6. Gemini API を呼び出して週報を生成 (generate_monthly_report.yml と同じエンドポイントを使用)
+      # 6. Gemini API を呼び出して週報を生成
       - name: Call Gemini API for weekly report
         id: ai
         env:
@@ -120,26 +118,22 @@ jobs:
           jq -Rn --arg text "$(cat "$PROMPT_FILE")" \
             '{contents:[{parts:[{text:$text}]}]}' > merged/payload.json
 
-          # generate_monthly_report.yml と同じエンドポイントを使用
           HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
             --data-binary @merged/payload.json)
 
-          # レスポンス本体とステータスコードを分離
           HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
           HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
 
           echo "HTTP Status: $HTTP_STATUS"
           echo "Response body: $HTTP_BODY"
 
-          # 2xx 以外はエラーとして終了
           if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
             echo "ERROR: Gemini API returned status $HTTP_STATUS" >&2
             exit 1
           fi
 
-          # JSON から生成されたテキストを抽出
           GENERATED_CONTENT=$(echo "$HTTP_BODY" | jq -r '.candidates[0].content.parts[0].text')
 
           if [ -z "$GENERATED_CONTENT" ]; then
@@ -151,7 +145,7 @@ jobs:
           echo "$GENERATED_CONTENT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # 7. 週報ファイルを作成して書き込む（拡張子を .txt に変更）
+      # 7. 週報ファイルを作成して書き込む（.txt で出力）
       - name: Create weekly report file
         id: write
         run: |
@@ -162,14 +156,13 @@ jobs:
 
           WEEKLY_FILE="weekly_report/${SFMT_START}to${SFMT_END}.txt"
 
-          # 以下の Heredoc を使って確実にファイルに書き込む
           cat << 'EOF' > "$WEEKLY_FILE"
           ${{ steps.ai.outputs.GENERATED_CONTENT }}
           EOF
 
           echo "WEEKLY_FILE=$WEEKLY_FILE" >> $GITHUB_OUTPUT
 
-      # 8. git コミット & プッシュ（コミット対象を .txt に変更）
+      # 8. git コミット & プッシュ
       - name: Commit and push weekly report
         run: |
           git config --local user.name "github-actions[bot]"
