@@ -164,8 +164,8 @@ jobs:
 
           # Heredoc を使ってテキストファイルに書き込む
           cat << 'EOF' > "$WEEKLY_FILE"
-${{ steps.ai.outputs.GENERATED_CONTENT }}
-EOF
+          ${{ steps.ai.outputs.GENERATED_CONTENT }}
+          EOF
 
           echo "WEEKLY_FILE=$WEEKLY_FILE" >> $GITHUB_OUTPUT
 
