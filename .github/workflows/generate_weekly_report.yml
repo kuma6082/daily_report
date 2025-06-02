@@ -59,7 +59,7 @@ jobs:
           SFMT_START=$(echo "$START" | sed 's/\//-/g')
           SFMT_END=$(echo "$END" | sed 's/\//-/g')
 
-          # マージファイルは内部処理用なので、ここでは .md のままにします
+          # マージファイルは内部処理用なので .md のままにする
           MERGED_FILE="merged/weekly_${SFMT_START}_to_${SFMT_END}.md"
           echo "" > "$MERGED_FILE"
 
@@ -97,19 +97,18 @@ jobs:
           END="${{ steps.date_calc.outputs.END_DATE }}"
           MERGED_FILE="${{ steps.merge.outputs.MERGED_FILE }}"
 
-          # テンプレートとマージ済み日報をそれぞれ取得
-          # テンプレートの拡張子を .txt に変更
+          # テンプレートとマージ済み日報をそれぞれ取得（テンプレートは .txt）
           TEMPLATE_CONTENT=$(<weekly_report_template.txt)
           MERGED_CONTENT=$(<"$MERGED_FILE")
 
-          # 月報ワークフローと同様のフォーマットでプロンプトを組み立てる
+          # プロンプトを組み立てる
           PROMPT="以下のフォーマットに沿って、Markdown ファイルの内容を要約して週報を作成してください\n\n---\n\nテンプレート:\n${TEMPLATE_CONTENT}\n\n---\n\n対象の内容:\n${MERGED_CONTENT}"
 
           # 一時ファイルに書き出し
           printf '%s' "$PROMPT" > merged/tmp_prompt.txt
           echo "PROMPT_FILE=merged/tmp_prompt.txt" >> $GITHUB_OUTPUT
 
-      # 6. Gemini API を呼び出して週報を生成 (generate_monthly_report.yml と同じエンドポイントを使用)
+      # 6. Gemini API を呼び出して週報を生成（リトライ付き）
       - name: Call Gemini API for weekly report
         id: ai
         env:
@@ -122,22 +121,46 @@ jobs:
           jq -Rn --arg text "$(cat "$PROMPT_FILE")" \
             '{contents:[{parts:[{text:$text}]}]}' > merged/payload.json
 
-          # generate_monthly_report.yml と同じエンドポイントを使用
-          HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
-            -H "Content-Type: application/json" \
-            --data-binary @merged/payload.json)
+          MAX_RETRIES=3
+          RETRY_DELAY=10    # 失敗時の待機時間（秒）
+          attempt=0
 
-          # レスポンス本体とステータスコードを分離
-          HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
-          HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+          while [ $attempt -lt $MAX_RETRIES ]; do
+            attempt=$((attempt + 1))
+            echo "---- Attempt #$attempt ----"
 
-          echo "HTTP Status: $HTTP_STATUS"
-          echo "Response body: $HTTP_BODY"
+            HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
+              "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
+              -H "Content-Type: application/json" \
+              --data-binary @merged/payload.json)
 
-          # 2xx 以外はエラーとして終了
+            HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
+            HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+
+            echo "HTTP Status: $HTTP_STATUS"
+
+            if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+              # 成功したらループを抜ける
+              echo "Gemini API returned 2xx. Proceeding..."
+              break
+            fi
+
+            # 5xx（特に 503）ならリトライ
+            if [ "$HTTP_STATUS" -ge 500 ]; then
+              echo "Warning: Gemini API returned status $HTTP_STATUS. Retrying after ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+            else
+              # それ以外のステータスは即時エラー
+              echo "ERROR: Gemini API returned status $HTTP_STATUS" >&2
+              echo "Response body: $HTTP_BODY" >&2
+              exit 1
+            fi
+          done
+
+          # リトライ回数を使い切り、まだ 2xx でない場合はエラー
           if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
-            echo "ERROR: Gemini API returned status $HTTP_STATUS" >&2
+            echo "ERROR: Failed after ${MAX_RETRIES} attempts. Status $HTTP_STATUS" >&2
+            echo "Response body: $HTTP_BODY" >&2
             exit 1
           fi
 
@@ -151,39 +174,4 @@ jobs:
 
           echo "GENERATED_CONTENT<<EOF" >> $GITHUB_OUTPUT
           echo "$GENERATED_CONTENT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      # 7. 週報ファイルを作成して書き込む
-      - name: Create weekly report file
-        id: write
-        run: |
-          mkdir -p weekly_report
-
-          SFMT_START=$(echo "${{ steps.date_calc.outputs.START_DATE }}" | sed 's/\//-/g')
-          SFMT_END=$(echo "${{ steps.date_calc.outputs.END_DATE }}" | sed 's/\//-/g')
-
-          # 出力ファイルを .txt に変更
-          WEEKLY_FILE="weekly_report/${SFMT_START}to${SFMT_END}.txt"
-
-          # Heredoc を使って確実にファイルに書き込む
-          cat << 'EOF' > "$WEEKLY_FILE"
-          ${{ steps.ai.outputs.GENERATED_CONTENT }}
-          EOF
-
-          echo "WEEKLY_FILE=$WEEKLY_FILE" >> $GITHUB_OUTPUT
-
-      # 8. git コミット & プッシュ
-      - name: Commit and push weekly report
-        run: |
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-
-          SFMT_START=$(echo "${{ steps.date_calc.outputs.START_DATE }}" | sed 's/\//-/g')
-          SFMT_END=$(echo "${{ steps.date_calc.outputs.END_DATE }}" | sed 's/\//-/g')
-          
-          # 生成済みの .txt ファイルパス
-          FILE_PATH="weekly_report/${SFMT_START}to${SFMT_END}.txt"
-
-          git add "$FILE_PATH"
-          git diff --cached --quiet || git commit -m "Add weekly report: ${START} to ${END}"
-          git push origin main
+          echo
