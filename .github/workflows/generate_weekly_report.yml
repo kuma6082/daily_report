@@ -1,3 +1,5 @@
+# .github/workflows/generate_weekly_report.yml
+
 name: Generate Weekly Report
 
 on:
@@ -162,8 +164,8 @@ jobs:
 
           # 以下の Heredoc を使って確実にファイルに書き込む
           cat << 'EOF' > "$WEEKLY_FILE"
-${{ steps.ai.outputs.GENERATED_CONTENT }}
-EOF
+          ${{ steps.ai.outputs.GENERATED_CONTENT }}
+          EOF
 
           echo "WEEKLY_FILE=$WEEKLY_FILE" >> $GITHUB_OUTPUT
 
