@@ -1,0 +1,180 @@
+# .github/workflows/generate_weekly_report.yml
+name: Generate Weekly Report
+
+# 手動実行のみ（cron設定なし）
+on:
+  workflow_dispatch:
+    inputs:
+      week_start:
+        description: '週の開始曜日を指定してください (例: monday, tuesday, …)'
+        required: true
+        default: 'monday'
+      target:
+        description: 'どの週を生成するかを指定してください (last_week / this_week)'
+        required: true
+        default: 'last_week'
+
+permissions:
+  contents: write  # 生成した週報をコミット・プッシュするための権限
+
+jobs:
+  build:
+    name: Build and Publish Weekly Report
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. リポジトリをチェックアウト
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Git ユーザ設定（後続のコミット用）
+      - name: Set up Git user
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+
+      # 3. 週開始日・終了日の計算
+      - name: Calculate START_DATE and END_DATE
+        id: dates
+        shell: bash
+        run: |
+          # inputs.week_start は "monday" 等
+          # inputs.target が "last_week" なら「先週」、"this_week" なら「今週」
+          if [ "${{ inputs.target }}" = "last_week" ]; then
+            # 例: last-monday → 先週の月曜の日付を取得
+            END_DATE=$(date -d "last-${{ inputs.week_start }}" +'%Y/%m/%d')
+          else
+            # this_week の場合
+            END_DATE=$(date -d "this-${{ inputs.week_start }}" +'%Y/%m/%d')
+          fi
+
+          # 開始日は終了日の6日前
+          START_DATE=$(date -d "$END_DATE - 6 days" +'%Y/%m/%d')
+
+          echo "start_date=$START_DATE" >> $GITHUB_OUTPUT
+          echo "end_date=$END_DATE"   >> $GITHUB_OUTPUT
+
+      # 4. 日報ファイルをマージして中間ファイルを生成
+      - name: Merge daily reports
+        id: merge
+        shell: bash
+        run: |
+          START_DATE="${{ steps.dates.outputs.start_date }}"
+          END_DATE="${{ steps.dates.outputs.end_date }}"
+
+          # 中間ファイルを置くディレクトリを作成
+          mkdir -p merged
+
+          # 中間マージファイル名（例: merged/weekly_2025-05-26_to_2025-06-01.md）
+          MERGED_FILE="merged/weekly_${START_DATE//\//-}_to_${END_DATE//\//-}.md"
+          > "$MERGED_FILE"
+
+          CUR="$START_DATE"
+          # whileループ：START_DATE から END_DATE まで1日ずつイテレート
+          while [ "$(date -d "$CUR" +'%Y/%m/%d')" != "$(date -d "$END_DATE + 1 day" +'%Y/%m/%d')" ]; do
+            Y=$(date -d "$CUR" +'%Y')
+            M=$(date -d "$CUR" +'%m')
+            D=$(date -d "$CUR" +'%d')
+            PATH_DAILY="${Y}/${M}/${D}.md"
+
+            if [ -f "$PATH_DAILY" ]; then
+              # 日報を “---” のセクションヘッダ付きで追記
+              echo -e "\n\n---\n# ${Y}/${M}/${D}\n" >> "$MERGED_FILE"
+              cat "$PATH_DAILY" >> "$MERGED_FILE"
+            else
+              echo "警告: ${PATH_DAILY} が見つかりません" >&2
+              # ファイルが絶対に必要であれば exit 1 としてもよい
+              # exit 1
+            fi
+
+            # 次の日付に進める
+            CUR=$(date -d "$CUR + 1 day" +'%Y/%m/%d')
+          done
+
+          echo "merged_file=$MERGED_FILE" >> $GITHUB_OUTPUT
+
+      # 5. プロンプトファイル (prompt_weekly.md) を生成
+      - name: Prepare prompt for Gemini
+        id: prompt
+        shell: bash
+        run: |
+          START_DATE="${{ steps.dates.outputs.start_date }}"
+          END_DATE="${{ steps.dates.outputs.end_date }}"
+          MERGED_FILE="${{ steps.merge.outputs.merged_file }}"
+          TEMPLATE="weekly_report_template.md"
+          PROMPT_TMP="prompt_tmp.md"
+          PROMPT_FILE="prompt_weekly.md"
+
+          # 5-1. テンプレート中の {{WEEK_START}} と {{WEEK_END}} を置換
+          sed \
+            -e "s/{{WEEK_START}}/${START_DATE//\//\\/}/g" \
+            -e "s/{{WEEK_END}}/${END_DATE//\//\\/}/g" \
+            "$TEMPLATE" > "$PROMPT_TMP"
+
+          # 5-2. {{MERGED_CONTENT}} 行を中間マージファイルの内容に置き換え
+          #      awk で {{MERGED_CONTENT}} がある行を見つけたら merged の中身を挿入
+          awk -v merged="$(sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/' "$MERGED_FILE")" \
+            '{ if ($0 ~ /{{MERGED_CONTENT}}/) { print merged } else { print } }' \
+            "$PROMPT_TMP" > "$PROMPT_FILE"
+
+          # テンポラリファイルを削除
+          rm "$PROMPT_TMP"
+
+          echo "prompt_file=$PROMPT_FILE" >> $GITHUB_OUTPUT
+
+      # 6. Gemini (OpenAI) API を呼び出して週報本文を生成
+      - name: Call Gemini (OpenAI API)
+        id: call
+        shell: bash
+        run: |
+          PROMPT_FILE="${{ steps.prompt.outputs.prompt_file }}"
+          START_DATE="${{ steps.dates.outputs.start_date }}"
+          END_DATE="${{ steps.dates.outputs.end_date }}"
+
+          # 週報を保存するディレクトリを確実に作成
+          mkdir -p weekly_report
+
+          # 生成される最終ファイル名（例: weekly_report/2025-05-26to2025-06-01.md）
+          REPORT_FILE="weekly_report/${START_DATE//\//-}to${END_DATE//\//-}.md"
+
+          # prompt_weekly.md の内容を JSON の "user" メッセージに含めて API を呼ぶ
+          RESPONSE=$(curl --fail -sS \
+            -X POST https://api.openai.com/v1/chat/completions \
+            -H "Authorization: Bearer ${{ secrets.GEMINI_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "model": "gpt-4o-mini",
+              "messages": [
+                {"role":"system","content":"You are a helpful assistant."},
+                {"role":"user","content": "'"$(sed 's/"/\\"/g' "$PROMPT_FILE")"'"}
+              ],
+              "max_tokens": 2000
+            }')
+
+          # レスポンス全文を残しておきたい場合は以下のようにファイル化できる（省略可）
+          echo "$RESPONSE" > merged/response_weekly_${START_DATE//\//-}_to_${END_DATE//\//-}.json
+
+          # JSON から実際の生成テキストを抜き出す
+          GENERATED_CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
+
+          # 生成テキストを最終週報ファイルに書き出し
+          echo "$GENERATED_CONTENT" > "$REPORT_FILE"
+
+          echo "report_file=$REPORT_FILE" >> $GITHUB_OUTPUT
+
+      # 7. 生成された週報をコミットしてプッシュ
+      - name: Commit and push weekly report
+        shell: bash
+        run: |
+          REPORT_FILE="${{ steps.call.outputs.report_file }}"
+          START_DATE="${{ steps.dates.outputs.start_date }}"
+          END_DATE="${{ steps.dates.outputs.end_date }}"
+
+          # もし変更がなければコミットをスキップ
+          git add "$REPORT_FILE"
+          if git diff --cached --quiet; then
+            echo "No changes to commit. 終了します。"
+          else
+            git commit -m "Add weekly report: ${START_DATE} to ${END_DATE}"
+            git push
+          fi
