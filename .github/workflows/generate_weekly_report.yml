@@ -1,5 +1,3 @@
-# .github/workflows/generate_weekly_report.yml
-
 name: Generate Weekly Report
 
 on:
