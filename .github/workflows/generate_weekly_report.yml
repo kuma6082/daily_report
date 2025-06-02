@@ -88,7 +88,7 @@ jobs:
           echo "Merged $COUNT daily report(s) into $MERGED_FILE"
           echo "MERGED_FILE=$MERGED_FILE" >> $GITHUB_OUTPUT
 
-      # 5. プロンプト文字列を生成 (テンプレート＋マージ済み日報を組み合わせ)
+      # 5. プロンプト文字列を生成 (テキストテンプレート＋マージ済み日報を組み合わせ)
       - name: Build prompt for Gemini
         id: build_prompt
         run: |
@@ -96,11 +96,11 @@ jobs:
           END="${{ steps.date_calc.outputs.END_DATE }}"
           MERGED_FILE="${{ steps.merge.outputs.MERGED_FILE }}"
 
-          # テンプレートとマージ済み日報をそれぞれ取得
-          TEMPLATE_CONTENT=$(<weekly_report_template.md)
+          # テキストテンプレートとマージ済み日報をそれぞれ取得
+          TEMPLATE_CONTENT=$(<weekly_report_template.txt)
           MERGED_CONTENT=$(<"$MERGED_FILE")
 
-          # 月報ワークフローと同様のフォーマットでプロンプトを組み立てる
+          # プロンプトを組み立てる
           PROMPT="以下のフォーマットに沿って、Markdown ファイルの内容を要約して週報を作成してください\n\n---\n\nテンプレート:\n${TEMPLATE_CONTENT}\n\n---\n\n対象の内容:\n${MERGED_CONTENT}"
 
           # 一時ファイルに書き出し
@@ -151,8 +151,8 @@ jobs:
           echo "$GENERATED_CONTENT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # 7. 週報ファイルを作成して書き込む
-      - name: Create weekly report file
+      # 7. 週報ファイルをテキスト形式で出力
+      - name: Create weekly report text file
         id: write
         run: |
           mkdir -p weekly_report
@@ -160,12 +160,12 @@ jobs:
           SFMT_START=$(echo "${{ steps.date_calc.outputs.START_DATE }}" | sed 's/\//-/g')
           SFMT_END=$(echo "${{ steps.date_calc.outputs.END_DATE }}" | sed 's/\//-/g')
 
-          WEEKLY_FILE="weekly_report/${SFMT_START}to${SFMT_END}.md"
+          WEEKLY_FILE="weekly_report/${SFMT_START}to${SFMT_END}.txt"
 
-          # 以下の Heredoc を使って確実にファイルに書き込む
+          # Heredoc を使ってテキストファイルに書き込む
           cat << 'EOF' > "$WEEKLY_FILE"
-          ${{ steps.ai.outputs.GENERATED_CONTENT }}
-          EOF
+${{ steps.ai.outputs.GENERATED_CONTENT }}
+EOF
 
           echo "WEEKLY_FILE=$WEEKLY_FILE" >> $GITHUB_OUTPUT
 
@@ -177,7 +177,7 @@ jobs:
 
           SFMT_START=$(echo "${{ steps.date_calc.outputs.START_DATE }}" | sed 's/\//-/g')
           SFMT_END=$(echo "${{ steps.date_calc.outputs.END_DATE }}" | sed 's/\//-/g')
-          FILE_PATH="weekly_report/${SFMT_START}to${SFMT_END}.md"
+          FILE_PATH="weekly_report/${SFMT_START}to${SFMT_END}.txt"
 
           git add "$FILE_PATH"
           git diff --cached --quiet || git commit -m "Add weekly report: ${START} to ${END}"
