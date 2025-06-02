@@ -2,20 +2,18 @@
 
 name: Generate Weekly Report
 
-# 手動実行のみ (cron は不要)
 on:
   workflow_dispatch:
     inputs:
       week_start:
         description: '週の開始曜日を選択してください (例: monday, tuesday, …)'
         required: true
-        default: 'monday'
+        default: 'saturday'
       target:
         description: 'どの週を生成するか (last_week / this_week)'
         required: true
         default: 'last_week'
 
-# GitHub Actions がコミット & プッシュするための権限
 permissions:
   contents: write
 
@@ -105,9 +103,11 @@ jobs:
           # 月報ワークフローと同様のフォーマットでプロンプトを組み立てる
           PROMPT="以下のフォーマットに沿って、Markdown ファイルの内容を要約して週報を作成してください\n\n---\n\nテンプレート:\n${TEMPLATE_CONTENT}\n\n---\n\n対象の内容:\n${MERGED_CONTENT}"
 
-          # 改行を \n にエスケープして $GITHUB_OUTPUT に保存
-          ESCAPED_PROMPT=$(printf '%s' "$PROMPT" | sed ':a;N;$!ba;s/\n/\\n/g')
-          echo "PROMPT=$ESCAPED_PROMPT" >> $GITHUB_OUTPUT
+          # いったんファイルに保存
+          printf '%s' "$PROMPT" > merged/tmp_prompt.txt
+
+          # GitHub Actions の出力としては単にファイル名を渡す形式にする
+          echo "PROMPT_FILE=merged/tmp_prompt.txt" >> $GITHUB_OUTPUT
 
       # 6. Gemini API を呼び出して週報を生成 (月報ワークフローと同じ方式)
       - name: Call Gemini API for weekly report
@@ -115,18 +115,16 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          # GitHub Actions の出力からエスケープされたプロンプトを取得
-          ESCAPED_PROMPT="${{ steps.build_prompt.outputs.PROMPT }}"
+          PROMPT_FILE="${{ steps.build_prompt.outputs.PROMPT_FILE }}"
 
-          # もう一度改行コードを戻す必要はなく、JSON の一行文字列として埋め込む
+          # jq を使って適切に JSON ペイロードを生成
+          jq -Rn --arg text "$(cat "$PROMPT_FILE")" \
+            '{contents:[{parts:[{text:$text}]}]}' > merged/payload.json
+
           RESPONSE=$(curl --fail -s -X POST \
             "https://generativelanguage.googleapis.com/v1beta2/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "contents": [{
-                "parts": [{ "text": "'"$ESCAPED_PROMPT"'" }]
-              }]
-            }' \
+            --data-binary @merged/payload.json \
             | jq -r '.candidates[0].content.parts[0].text')
 
           if [ -z "$RESPONSE" ]; then
