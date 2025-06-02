@@ -107,7 +107,7 @@ jobs:
           printf '%s' "$PROMPT" > merged/tmp_prompt.txt
           echo "PROMPT_FILE=merged/tmp_prompt.txt" >> $GITHUB_OUTPUT
 
-      # 6. Gemini API を呼び出して週報を生成 (月報ワークフローと同じ方式、エラー詳細をログ出力)
+      # 6. Gemini API を呼び出して週報を生成
       - name: Call Gemini API for weekly report
         id: ai
         env:
@@ -120,7 +120,8 @@ jobs:
           jq -Rn --arg text "$(cat "$PROMPT_FILE")" \
             '{contents:[{parts:[{text:$text}]}]}' > merged/payload.json
 
-          # 呼び出し時に HTTP ステータスコードとレスポンスボディを分けて取得
+          # generate_monthly_report.yml と同じエンドポイントを使用
+          # https://generativelanguage.googleapis.com/v1beta2/models/gemini-2.0-flash:generateContent?key=<API_KEY>
           HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
             "https://generativelanguage.googleapis.com/v1beta2/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
