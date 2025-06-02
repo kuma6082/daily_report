@@ -1,93 +1,180 @@
-name: Generate Monthly Report
+# .github/workflows/generate_weekly_report.yml
+
+name: Generate Weekly Report
 
 on:
   workflow_dispatch:
     inputs:
-      target_month:
-        description: '対象の月 (now: 今月, last: 先月)'
+      week_start:
+        description: '週の開始曜日を選択してください (例: monday, tuesday, …)'
         required: true
-        default: 'last'
-      save_location:
-        description: '保存先 (github)'
+        default: 'saturday'   # デフォルトを土曜日に変更
+      target:
+        description: 'どの週を生成するか (last_week / this_week)'
         required: true
-        default: 'github'
+        default: 'last_week'
+
+permissions:
+  contents: write
 
 jobs:
-  generate_report:
+  build-weekly-report:
     runs-on: ubuntu-latest
-    env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      - name: リポジトリをチェックアウト
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
+      # 1. リポジトリをチェックアウト
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: 実行対象の年月を決定
+      # 2. 週の範囲 (START_DATE, END_DATE) を計算する
+      - name: Calculate week range
+        id: date_calc
         run: |
-          set -e
-          if [ "${{ github.event.inputs.target_month }}" == "now" ]; then
-            YEAR=$(date +'%Y') || { echo "ERROR: Failed to get current year"; exit 1; }
-            MONTH=$(date +'%m') || { echo "ERROR: Failed to get current month"; exit 1; }
+          WEEK_START="${{ github.event.inputs.week_start }}"  # saturday, sunday, …
+          TARGET="${{ github.event.inputs.target }}"          # last_week or this_week
+
+          if [ "$TARGET" = "last_week" ]; then
+            END_DATE=$(date -d "last $WEEK_START" +'%Y/%m/%d')
           else
-            YEAR=$(date --date="last month" +'%Y') || { echo "ERROR: Failed to get last year"; exit 1; }
-            MONTH=$(date --date="last month" +'%m') || { echo "ERROR: Failed to get last month"; exit 1; }
+            END_DATE=$(date -d "this $WEEK_START" +'%Y/%m/%d')
           fi
 
-          echo "YEAR=$YEAR" >> $GITHUB_ENV
-          echo "MONTH=$MONTH" >> $GITHUB_ENV
-          echo "Target year: $YEAR, month: $MONTH"
+          START_DATE=$(date -d "$END_DATE - 6 days" +'%Y/%m/%d')
 
-      - name: Gemini API を使って月報を生成
+          echo "START_DATE=$START_DATE" >> $GITHUB_OUTPUT
+          echo "END_DATE=$END_DATE" >> $GITHUB_OUTPUT
+
+      # 3. merged フォルダを作成 (マージした中間ファイル置き場)
+      - name: Create merged directory
         run: |
-          set -e
-          mkdir -p report
-          MERGED_FILE="merged/${YEAR}-${MONTH}-merged.md"
-          TEMPLATE_FILE="monthly_report_template.md"
+          mkdir -p merged
 
-          if [ ! -f "$MERGED_FILE" ]; then
-            echo "ERROR: $MERGED_FILE does not exist. Skipping report generation."
-            exit 0
-          fi
+      # 4. 日報ファイルをマージする
+      - name: Merge daily reports
+        id: merge
+        run: |
+          START="${{ steps.date_calc.outputs.START_DATE }}"
+          END="${{ steps.date_calc.outputs.END_DATE }}"
 
-          if [ ! -f "$TEMPLATE_FILE" ]; then
-            echo "ERROR: Template file $TEMPLATE_FILE does not exist. Using default format."
-            TEMPLATE_CONTENT="## ${YEAR}年${MONTH}月の月報\n\n### 今月の振り返り\n\n### 達成したこと\n\n### 課題と改善点\n\n### 来月の目標"
-          else
-            TEMPLATE_CONTENT=$(cat "$TEMPLATE_FILE")
-          fi
+          SFMT_START=$(echo "$START" | sed 's/\//-/g')
+          SFMT_END=$(echo "$END" | sed 's/\//-/g')
 
-          # Gemini API 用のプロンプト作成
-          PROMPT="以下のフォーマットに沿って、Markdown ファイルの内容を要約して月報を作成してください。\n\n---\nテンプレート:\n${TEMPLATE_CONTENT}\n---\n\n対象の内容:\n$(cat "$MERGED_FILE")"
+          MERGED_FILE="merged/weekly_${SFMT_START}_to_${SFMT_END}.md"
+          echo "" > "$MERGED_FILE"
 
-          # Gemini API で月報を生成
-          SUMMARY=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "contents": [{
-                "parts": [{ "text": "'"$PROMPT"'" }]
-              }]
-            }' | jq -r '.candidates[0].content.parts[0].text')
+          CUR="$START"
+          COUNT=0
 
-          if [ -z "$SUMMARY" ]; then
-            echo "ERROR: Failed to generate summary from Gemini API."
+          while [ "$(date -d "$CUR" +'%Y/%m/%d')" != "$(date -d "$END + 1 day" +'%Y/%m/%d')" ]; do
+            Y=$(date -d "$CUR" +'%Y')
+            M=$(date -d "$CUR" +'%m')
+            D=$(date -d "$CUR" +'%d')
+            PATH_DAILY="${Y}/${M}/${D}.md"
+
+            if [ -f "$PATH_DAILY" ]; then
+              echo -e "\n\n---\n# ${Y}/${M}/${D}\n" >> "$MERGED_FILE"
+              cat "$PATH_DAILY" >> "$MERGED_FILE"
+              COUNT=$((COUNT + 1))
+            fi
+
+            CUR=$(date -d "$CUR + 1 day" +'%Y/%m/%d')
+          done
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "Error: No daily reports found between $START and $END" >&2
             exit 1
           fi
 
-          echo "$SUMMARY" > report/report_summary.txt
+          echo "Merged $COUNT daily report(s) into $MERGED_FILE"
+          echo "MERGED_FILE=$MERGED_FILE" >> $GITHUB_OUTPUT
 
-      - name: GitHub に保存
+      # 5. プロンプト文字列を生成 (テンプレート＋マージ済み日報を組み合わせ)
+      - name: Build prompt for Gemini
+        id: build_prompt
         run: |
-          set -e
-          REPORT_FILE="report/${YEAR}-${MONTH}-report.md"
-          echo -e "# ${YEAR}年${MONTH}月の月報\n\n$(cat report/report_summary.txt)" > "$REPORT_FILE"
+          START="${{ steps.date_calc.outputs.START_DATE }}"
+          END="${{ steps.date_calc.outputs.END_DATE }}"
+          MERGED_FILE="${{ steps.merge.outputs.MERGED_FILE }}"
 
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # テンプレートとマージ済み日報をそれぞれ取得
+          TEMPLATE_CONTENT=$(<weekly_report_template.md)
+          MERGED_CONTENT=$(<"$MERGED_FILE")
 
-          git add "$REPORT_FILE"
-          git commit -m "${YEAR}年${MONTH}月の月報を追加"
+          # 月報ワークフローと同様のフォーマットでプロンプトを組み立てる
+          PROMPT="以下のフォーマットに沿って、Markdown ファイルの内容を要約して週報を作成してください\n\n---\n\nテンプレート:\n${TEMPLATE_CONTENT}\n\n---\n\n対象の内容:\n${MERGED_CONTENT}"
+
+          # 一時ファイルに書き出し
+          printf '%s' "$PROMPT" > merged/tmp_prompt.txt
+          echo "PROMPT_FILE=merged/tmp_prompt.txt" >> $GITHUB_OUTPUT
+
+      # 6. Gemini API を呼び出して週報を生成
+      - name: Call Gemini API for weekly report
+        id: ai
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          PROMPT_FILE="${{ steps.build_prompt.outputs.PROMPT_FILE }}"
+          echo "Using prompt file: $PROMPT_FILE"
+
+          # JSON ペイロードを作成
+          jq -Rn --arg text "$(cat "$PROMPT_FILE")" \
+            '{contents:[{parts:[{text:$text}]}]}' > merged/payload.json
+
+          # generate_monthly_report.yml と同じエンドポイントを使用
+          # https://generativelanguage.googleapis.com/v1beta2/models/gemini-2.0-flash:generateContent?key=<API_KEY>
+          HTTP_RESPONSE=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
+            "https://generativelanguage.googleapis.com/v1beta2/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
+            -H "Content-Type: application/json" \
+            --data-binary @merged/payload.json)
+
+          # レスポンス本体とステータスコードを分離
+          HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
+          HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response body: $HTTP_BODY"
+
+          # 2xx 以外はエラーとして終了
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "ERROR: Gemini API returned status $HTTP_STATUS" >&2
+            exit 1
+          fi
+
+          # JSON から生成されたテキストを抽出
+          GENERATED_CONTENT=$(echo "$HTTP_BODY" | jq -r '.candidates[0].content.parts[0].text')
+
+          if [ -z "$GENERATED_CONTENT" ]; then
+            echo "ERROR: Gemini API returned empty content" >&2
+            exit 1
+          fi
+
+          echo "GENERATED_CONTENT<<EOF" >> $GITHUB_OUTPUT
+          echo "$GENERATED_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # 7. 週報ファイルを作成して書き込む
+      - name: Create weekly report file
+        id: write
+        run: |
+          mkdir -p weekly_report
+
+          SFMT_START=$(echo "${{ steps.date_calc.outputs.START_DATE }}" | sed 's/\//-/g')
+          SFMT_END=$(echo "${{ steps.date_calc.outputs.END_DATE }}" | sed 's/\//-/g')
+
+          WEEKLY_FILE="weekly_report/${SFMT_START}to${SFMT_END}.md"
+          echo "${{ steps.ai.outputs.GENERATED_CONTENT }}" > "$WEEKLY_FILE"
+          echo "WEEKLY_FILE=$WEEKLY_FILE" >> $GITHUB_OUTPUT
+
+      # 8. git コミット & プッシュ
+      - name: Commit and push weekly report
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+
+          SFMT_START=$(echo "${{ steps.date_calc.outputs.START_DATE }}" | sed 's/\//-/g')
+          SFMT_END=$(echo "${{ steps.date_calc.outputs.END_DATE }}" | sed 's/\//-/g')
+          FILE_PATH="weekly_report/${SFMT_START}to${SFMT_END}.md"
+
+          git add "$FILE_PATH"
+          git diff --cached --quiet || git commit -m "Add weekly report: ${START} to ${END}"
           git push origin main
