@@ -115,7 +115,7 @@ jobs:
           echo "Using prompt file: $PROMPT_FILE"
 
           echo "===== Prompt to Gemini ====="
-          cat "$PROMPTFILE"
+          cat "$PROMPT_FILE"
           echo "============================="
 
           # JSON ペイロードを作成
