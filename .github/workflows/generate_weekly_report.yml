@@ -155,7 +155,6 @@ jobs:
           SFMT_END=$(echo "${{ steps.date_calc.outputs.END_DATE }}" | sed 's/\//-/g')
 
           WEEKLY_FILE="weekly_report/${SFMT_START}to${SFMT_END}.md"
-
           echo "${{ steps.ai.outputs.GENERATED_CONTENT }}" > "$WEEKLY_FILE"
           echo "WEEKLY_FILE=$WEEKLY_FILE" >> $GITHUB_OUTPUT
 
