@@ -114,6 +114,10 @@ jobs:
           PROMPT_FILE="${{ steps.build_prompt.outputs.PROMPT_FILE }}"
           echo "Using prompt file: $PROMPT_FILE"
 
+          echo "===== Prompt to Gemini ====="
+          cat "$PROMPTFILE"
+          echo "============================="
+
           # JSON ペイロードを作成
           jq -Rn --arg text "$(cat "$PROMPT_FILE")" \
             '{contents:[{parts:[{text:$text}]}]}' > merged/payload.json
