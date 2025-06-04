@@ -177,5 +177,5 @@ jobs:
           FILE_PATH="weekly_report/${SFMT_START}to${SFMT_END}.txt"
 
           git add "$FILE_PATH"
-          git diff --cached --quiet || git commit -m "Add weekly report: ${START} to ${END}"
+          git diff --cached --quiet || git commit -m "Add weekly report: ${SFMT_START} to ${SFMT_END}"
           git push origin main
