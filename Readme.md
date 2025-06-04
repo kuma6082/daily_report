@@ -22,12 +22,11 @@ on:
 
 ## ディレクトリ構成
 - `2024/`, `2025/` : 年ごとの日報を月別に格納
-- `merged/` : マージされた日報の中間ファイル
 - `report/` : 月報を保存
 - `weekly_report/` : 週報を保存
 
 ## 使い方の例
 1. 毎日 `202X/MM/DD.md` を追加・コミットします。
-2. `Generate Monthly Report` ワークフローを実行して月報を生成します（この中で日報の結合も行われます）。
+2. `Generate Monthly Report` ワークフローを実行して月報を生成します。
 3. 必要に応じて `Generate Weekly Report` を実行します。
 

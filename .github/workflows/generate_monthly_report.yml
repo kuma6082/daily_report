@@ -41,42 +41,19 @@ jobs:
           echo "MONTH=$MONTH" >> $GITHUB_ENV
           echo "Target year: $YEAR, month: $MONTH"
 
-      - name: Markdownファイルを結合（各ファイルの LAST_COMMIT_MSG を追加）
-        run: |
-          REPORT_DIR="$YEAR/$MONTH"
-          MERGED_DIR="merged"
-          OUTPUT_FILE="${MERGED_DIR}/${YEAR}-${MONTH}-merged.md"
-
-          echo "Looking for files in: $REPORT_DIR"
-
-          if [ ! -d "$REPORT_DIR" ]; then
-            echo "Directory $REPORT_DIR does not exist. Skipping merge."
-            exit 0
-          fi
-
-          mkdir -p "$MERGED_DIR"
-          echo -e "# Merged Daily Reports for $YEAR-$MONTH\n\n" > "$OUTPUT_FILE"
-
-          shopt -s nullglob
-          for file in "$REPORT_DIR"/*.md; do
-            LAST_COMMIT_MSG=$(git log -1 --pretty=%B -- "$file")
-            CONTENT=$(cat "$file")
-            echo -e "## $(basename \"$file\")\n" >> "$OUTPUT_FILE"
-            echo -e "**Last Commit Message:** $LAST_COMMIT_MSG\n" >> "$OUTPUT_FILE"
-            echo -e "$CONTENT\n\n" >> "$OUTPUT_FILE"
-          done
-
       - name: Gemini API を使って月報を生成
         run: |
           set -e
           mkdir -p report
-          MERGED_FILE="merged/${YEAR}-${MONTH}-merged.md"
+          REPORT_DIR="$YEAR/$MONTH"
+          DAILY_CONTENT=""
+          shopt -s nullglob
+          for file in "$REPORT_DIR"/*.md; do
+            LAST_COMMIT_MSG=$(git log -1 --pretty=%B -- "$file")
+            CONTENT=$(cat "$file")
+            DAILY_CONTENT="${DAILY_CONTENT}\n## $(basename "$file")\n**Last Commit Message:** $LAST_COMMIT_MSG\n${CONTENT}\n"
+          done
           TEMPLATE_FILE="monthly_report_template.md"
-
-          if [ ! -f "$MERGED_FILE" ]; then
-            echo "ERROR: $MERGED_FILE does not exist. Skipping report generation."
-            exit 0
-          fi
 
           if [ ! -f "$TEMPLATE_FILE" ]; then
             echo "ERROR: Template file $TEMPLATE_FILE does not exist. Using default format."
@@ -86,7 +63,7 @@ jobs:
           fi
 
           # Gemini API 用のプロンプト作成
-          PROMPT="以下のフォーマットに沿って、Markdown ファイルの内容を要約して月報を作成してください。\n\n---\nテンプレート:\n${TEMPLATE_CONTENT}\n---\n\n対象の内容:\n$(cat "$MERGED_FILE")"
+          PROMPT="以下のフォーマットに沿って、Markdown ファイルの内容を要約して月報を作成してください。\n\n---\nテンプレート:\n${TEMPLATE_CONTENT}\n---\n\n対象の内容:\n${DAILY_CONTENT}"
 
           # Gemini API で月報を生成
           jq -Rn --arg text "$PROMPT" '{contents:[{parts:[{text:$text}]}]}' > payload.json
@@ -106,11 +83,10 @@ jobs:
           set -e
           REPORT_FILE="report/${YEAR}-${MONTH}-report.md"
           echo -e "# ${YEAR}年${MONTH}月の月報\n\n$(cat report/report_summary.txt)" > "$REPORT_FILE"
-          MERGED_FILE="merged/${YEAR}-${MONTH}-merged.md"
 
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add "$REPORT_FILE" "$MERGED_FILE"
+          git add "$REPORT_FILE"
           git diff --cached --quiet || git commit -m "${YEAR}年${MONTH}月の月報を追加"
           git push origin main
