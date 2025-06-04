@@ -54,7 +54,8 @@ jobs:
           echo -e "# Merged Daily Reports for $YEAR-$MONTH\n\n" > "$OUTPUT_FILE"
 
           # 各ファイルに対して処理
-          for file in $(ls "$REPORT_DIR"/*.md | sort); do
+          shopt -s nullglob
+          for file in "$REPORT_DIR"/*.md; do
             # 各ファイルの最新コミットメッセージを取得
             LAST_COMMIT_MSG=$(git log -1 --pretty=%B -- "$file")
 
