@@ -8,7 +8,7 @@
 
 ## 月報・週報生成ワークフロー
 - `.github/workflows/generate_monthly_report.yml`
-  日報を結合してから Gemini API を利用し月報 (`report/`) を作成します。
+  日報を結合してから Gemini API を利用し月報 (`monthly_report/`) を作成します。
 - `.github/workflows/generate_weekly_report.yml`
   指定週の学習内容を要約し `weekly_report/` に出力します。
 - これらのワークフローは **workflow_dispatch** で手動実行します。必要に応じて `schedule` トリガーを追加することも可能です。
@@ -22,7 +22,7 @@ on:
 
 ## ディレクトリ構成
 - `2024/`, `2025/` : 年ごとの日報を月別に格納
-- `report/` : 月報を保存
+- `monthly_report/` : 月報を保存
 - `weekly_report/` : 週報を保存
 
 ## 使い方の例
