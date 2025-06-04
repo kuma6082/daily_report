@@ -78,7 +78,7 @@ jobs:
 
           if [ -f "$MERGED_FILE" ]; then
             git add "$MERGED_FILE"
-            git commit -m "${YEAR}年${MONTH}月の日報を結合"
+            git diff --cached --quiet || git commit -m "${YEAR}年${MONTH}月の日報を結合"
 
             # `GITHUB_TOKEN` を使って認証して push
             git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
