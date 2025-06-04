@@ -7,11 +7,9 @@
 - Markdown でその日の学習内容を記録してください。
 
 ## 月報・週報生成ワークフロー
-- `.github/workflows/merge_daily_reports.yml`  
-  日報を 1 か月分まとめたファイルを `merged/` に生成します。
-- `.github/workflows/generate_monthly_report.yml`  
-  Gemini API を利用して月報 (`report/`) を作成します。
-- `.github/workflows/generate_weekly_report.yml`  
+- `.github/workflows/generate_monthly_report.yml`
+  日報を結合してから Gemini API を利用し月報 (`report/`) を作成します。
+- `.github/workflows/generate_weekly_report.yml`
   指定週の学習内容を要約し `weekly_report/` に出力します。
 - これらのワークフローは **workflow_dispatch** で手動実行します。必要に応じて `schedule` トリガーを追加することも可能です。
 - 例えば `schedule` を使う場合:
@@ -30,6 +28,6 @@ on:
 
 ## 使い方の例
 1. 毎日 `202X/MM/DD.md` を追加・コミットします。
-2. 必要に応じて `Merge Daily Reports` ワークフローを実行し、月次のファイルを作成します。
-3. `Generate Monthly Report` または `Generate Weekly Report` を実行してレポートを生成します。
+2. `Generate Monthly Report` ワークフローを実行して月報を生成します（この中で日報の結合も行われます）。
+3. 必要に応じて `Generate Weekly Report` を実行します。
 
