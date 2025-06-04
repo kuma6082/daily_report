@@ -65,7 +65,7 @@ jobs:
 
           # Gemini API で月報を生成
           jq -Rn --arg text "$PROMPT" '{contents:[{parts:[{text:$text}]}]}' > payload.json
-          SUMMARY=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}" \
+          SUMMARY=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
             --data-binary @payload.json | jq -r '.candidates[0].content.parts[0].text // empty')
 
