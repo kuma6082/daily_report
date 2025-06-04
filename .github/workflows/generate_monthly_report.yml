@@ -44,7 +44,7 @@ jobs:
       - name: Gemini API を使って月報を生成
         run: |
           set -e
-          mkdir -p report
+          mkdir -p monthly_report
           REPORT_DIR="$YEAR/$MONTH"
           DAILY_CONTENT=""
           shopt -s nullglob
@@ -76,13 +76,13 @@ jobs:
             exit 1
           fi
 
-          echo "$SUMMARY" > report/report_summary.txt
+          echo "$SUMMARY" > monthly_report/report_summary.txt
 
       - name: GitHub に保存
         run: |
           set -e
-          REPORT_FILE="report/${YEAR}-${MONTH}-report.md"
-          echo -e "# ${YEAR}年${MONTH}月の月報\n\n$(cat report/report_summary.txt)" > "$REPORT_FILE"
+          REPORT_FILE="monthly_report/${YEAR}-${MONTH}-report.md"
+          echo -e "# ${YEAR}年${MONTH}月の月報\n\n$(cat monthly_report/report_summary.txt)" > "$REPORT_FILE"
 
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
