@@ -138,7 +138,7 @@ jobs:
             exit 1
           fi
 
-          GENERATED_CONTENT=$(echo "$HTTP_BODY" | jq -r '.candidates[0].content.parts[0].text')
+          GENERATED_CONTENT=$(echo "$HTTP_BODY" | jq -r '.candidates[0].content.parts[0].text // empty')
 
           if [ -z "$GENERATED_CONTENT" ]; then
             echo "ERROR: Gemini API returned empty content" >&2

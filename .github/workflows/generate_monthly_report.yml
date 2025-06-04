@@ -70,7 +70,7 @@ jobs:
               "contents": [{
                 "parts": [{ "text": "'"$PROMPT"'" }]
               }]
-            }' | jq -r '.candidates[0].content.parts[0].text')
+            }' | jq -r '.candidates[0].content.parts[0].text // empty')
 
           if [ -z "$SUMMARY" ]; then
             echo "ERROR: Failed to generate summary from Gemini API."
