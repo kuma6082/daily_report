@@ -86,5 +86,5 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
           git add "$REPORT_FILE"
-          git commit -m "${YEAR}年${MONTH}月の月報を追加"
+          git diff --cached --quiet || git commit -m "${YEAR}年${MONTH}月の月報を追加"
           git push origin main
