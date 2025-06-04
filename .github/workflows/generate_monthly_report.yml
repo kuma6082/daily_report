@@ -64,13 +64,10 @@ jobs:
           PROMPT="以下のフォーマットに沿って、Markdown ファイルの内容を要約して月報を作成してください。\n\n---\nテンプレート:\n${TEMPLATE_CONTENT}\n---\n\n対象の内容:\n$(cat "$MERGED_FILE")"
 
           # Gemini API で月報を生成
+          jq -Rn --arg text "$PROMPT" '{contents:[{parts:[{text:$text}]}]}' > payload.json
           SUMMARY=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "contents": [{
-                "parts": [{ "text": "'"$PROMPT"'" }]
-              }]
-            }' | jq -r '.candidates[0].content.parts[0].text')
+            --data-binary @payload.json | jq -r '.candidates[0].content.parts[0].text')
 
           if [ -z "$SUMMARY" ]; then
             echo "ERROR: Failed to generate summary from Gemini API."
