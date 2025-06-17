@@ -179,3 +179,6 @@ jobs:
           git add "$FILE_PATH"
           git diff --cached --quiet || git commit -m "Add weekly report: ${SFMT_START} to ${SFMT_END}"
           git push origin main
+
+          LINK="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/$FILE_PATH"
+          echo "週報のリンク: $LINK"

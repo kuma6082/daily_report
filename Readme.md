@@ -12,6 +12,7 @@
 - `.github/workflows/generate_weekly_report.yml`
   指定週の学習内容を要約し `weekly_report/` に出力します。
 - これらのワークフローは **workflow_dispatch** で手動実行します。必要に応じて `schedule` トリガーを追加することも可能です。
+  実行後、ログに生成されたレポートへの URL が表示されます。
 - 例えば `schedule` を使う場合:
 ```yaml
 on:

@@ -90,3 +90,6 @@ jobs:
           git add "$REPORT_FILE"
           git diff --cached --quiet || git commit -m "${YEAR}年${MONTH}月の月報を追加"
           git push origin main
+
+          LINK="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/main/$REPORT_FILE"
+          echo "月報のリンク: $LINK"
