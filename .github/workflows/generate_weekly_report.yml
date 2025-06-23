@@ -33,13 +33,13 @@ jobs:
           WEEK_START="${{ github.event.inputs.week_start }}"  # saturday, sunday, …
           TARGET="${{ github.event.inputs.target }}"          # last_week or this_week
 
+          START_DATE=$(date -d "last $WEEK_START" +'%Y/%m/%d')
+
           if [ "$TARGET" = "last_week" ]; then
-            END_DATE=$(date -d "last $WEEK_START" +'%Y/%m/%d')
-          else
-            END_DATE=$(date -d "this $WEEK_START" +'%Y/%m/%d')
+            START_DATE=$(date -d "$START_DATE - 7 days" +'%Y/%m/%d')
           fi
 
-          START_DATE=$(date -d "$END_DATE - 6 days" +'%Y/%m/%d')
+          END_DATE=$(date -d "$START_DATE + 6 days" +'%Y/%m/%d')
 
           echo "START_DATE=$START_DATE" >> $GITHUB_OUTPUT
           echo "END_DATE=$END_DATE" >> $GITHUB_OUTPUT

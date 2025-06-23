@@ -11,6 +11,7 @@
   日報を結合してから Gemini API を利用し月報 (`monthly_report/`) を作成します。
 - `.github/workflows/generate_weekly_report.yml`
   指定週の学習内容を要約し `weekly_report/` に出力します。
+  週報の対象期間は `week_start` で指定した曜日の直近過去日を起点とし、`target` が `last_week` の場合はさらに 7 日前から 6 日間を対象とします。
 - これらのワークフローは **workflow_dispatch** で手動実行します。必要に応じて `schedule` トリガーを追加することも可能です。
   実行後、ログに生成されたレポートへの URL が表示されます。
 - 例えば `schedule` を使う場合:
