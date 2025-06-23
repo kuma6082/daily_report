@@ -6,13 +6,27 @@ on:
   workflow_dispatch:
     inputs:
       week_start:
-        description: '週の開始曜日を選択してください (例: monday, tuesday, …)'
+        description: '週の開始曜日を選択してください'
         required: true
-        default: 'saturday' 
+        type: choice
+        options:
+          - monday
+          - tuesday
+          - wednesday
+          - thursday
+          - friday
+          - saturday
+          - sunday
+        default: saturday
+
       target:
-        description: 'どの週を生成するか (last_week / this_week)'
+        description: 'どの週を生成するか'
         required: true
-        default: 'last_week'
+        type: choice
+        options:
+          - last_week
+          - this_week
+        default: last_week
 
 permissions:
   contents: write
