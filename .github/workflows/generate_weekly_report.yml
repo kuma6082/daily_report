@@ -114,7 +114,7 @@ jobs:
           TEMPLATE_CONTENT=$(<weekly_report_template.txt)
           MERGED_CONTENT=$(<"$MERGED_FILE")
 
-          PROMPT="以下のフォーマットに沿って、テキストファイルの内容を要約して週報を作成してください\n\nテンプレート:\n${TEMPLATE_CONTENT}\n\n対象の内容:\n${MERGED_CONTENT}"
+          PROMPT="以下のフォーマットに沿って、テキストファイルの内容を要約して${START}~${END}の週報を作成してください\n\nテンプレート:\n${TEMPLATE_CONTENT}\n\n対象の内容:\n${MERGED_CONTENT}"
 
           printf '%s' "$PROMPT" > merged/tmp_prompt.txt
           echo "PROMPT_FILE=merged/tmp_prompt.txt" >> $GITHUB_OUTPUT
