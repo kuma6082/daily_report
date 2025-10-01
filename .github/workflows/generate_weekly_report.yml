@@ -34,6 +34,8 @@ permissions:
 jobs:
   build-weekly-report:
     runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Tokyo
 
     steps:
       # 1. リポジトリをチェックアウト
